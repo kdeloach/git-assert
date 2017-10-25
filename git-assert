@@ -1,14 +1,13 @@
 #!/usr/bin/env python
 """
-Make assertions about one or more git repositories.
+Make assertions about a git repository.
 
-For example, to assert that a repository is on the "master" branch run
-"git-assert --branch=master sample-project/".
+For example, to assert that a repository is on the "master" branch run:
+$ git-assert sample-project/ --branch=master
 
 Failed assertions output to stderr and exit with code 1.
 """
 import argparse
-import fileinput
 import os
 import subprocess
 import sys
@@ -17,7 +16,7 @@ import sys
 VERSION = '1.0.0'
 
 
-def git_assert_unstaged_changes(path):
+def git_assert_no_unstaged_changes(path):
     """
     Return True if there are no unstaged changes.
     """
@@ -26,7 +25,7 @@ def git_assert_unstaged_changes(path):
     for line in output.splitlines():
         if line.startswith(' M '):
             unstaged_file = line.replace(' M ', '')
-            sys.stderr.write('{}: unstaged changes for "{}"\n'.format(
+            sys.stderr.write('{}: unstaged changes detected for file "{}"\n'.format(
                 path, unstaged_file))
             passed = False
     return passed
@@ -49,7 +48,7 @@ def git_assert_branch(path, expected):
     return False
 
 
-def git_assert_path(path, branch=None, unstaged_changes=False):
+def git_assert_path(path, branch=None, no_unstaged_changes=False):
     passed = True
 
     # Skip tests if path doesn't exist
@@ -65,8 +64,8 @@ def git_assert_path(path, branch=None, unstaged_changes=False):
     if branch:
         passed &= git_assert_branch(path, branch)
 
-    if unstaged_changes:
-        passed &= git_assert_unstaged_changes(path)
+    if no_unstaged_changes:
+        passed &= git_assert_no_unstaged_changes(path)
 
     return passed
 
@@ -77,34 +76,24 @@ def resolve_absolute_paths(paths):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('-V', '--version', action='store_true',
-                        help='display version number')
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('-V', '--version', action='store_true', help='display version number')
     parser.add_argument('--branch', help='branch name')
-    parser.add_argument('--unstaged-changes', action='store_true',
-                        help='check for unstaged changes')
-    parser.add_argument('path', nargs='*',
-                        help='path to local git repository (use "-" to read from stdin)')
+    parser.add_argument('--no-unstaged-changes', action='store_true', help='check for unstaged changes')
+    parser.add_argument('path', nargs='?', help='path to local git repository')
 
     args = parser.parse_args()
 
     if args.version:
-        print(VERSION)
+        print('git-assert {}'.format(VERSION))
         sys.exit(0)
 
-    if len(args.path) == 0:
+    if not args.path:
         parser.error('must specify at least one git repository path')
 
-    # Read from stdin if first path is "-"
-    if args.path[0] == '-':
-        args.path = fileinput.input('-')
-
-    passed = True
-    paths = resolve_absolute_paths(args.path)
-    for path in paths:
-        passed &= git_assert_path(path,
-                                  args.branch,
-                                  args.unstaged_changes)
+    path = os.path.abspath(os.path.expanduser(args.path.strip()))
+    passed = git_assert_path(path, args.branch, args.no_unstaged_changes)
 
     if passed:
         sys.exit(0)
